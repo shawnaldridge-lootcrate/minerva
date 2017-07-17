@@ -1,0 +1,430 @@
+<%= image_tag 'customer-service', id: 'customer-service' %>
+<%= image_tag 'security', id: 'security' %>
+<%= image_tag 'shipping', id: 'shipping' %>
+<%= image_tag 'warehouse', id: 'warehouse' %>
+<%= image_tag 'finance', id: 'finance' %>
+<%= image_tag 'order-management', id: 'order-management' %>
+<script type="text/javascript">
+'use strict';
+
+
+// requestanimation polyfill
+(function () {
+    var lastTime = 0;
+    var vendors = ['webkit', 'moz'];
+    for (var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+        window.requestAnimationFrame = window[vendors[x] + 'RequestAnimationFrame'];
+        window.cancelAnimationFrame = window[vendors[x] + 'CancelAnimationFrame'] || window[vendors[x] + 'CancelRequestAnimationFrame'];
+    }
+
+    if (!window.requestAnimationFrame) window.requestAnimationFrame = function (callback, element) {
+        var currTime = new Date().getTime();
+        var timeToCall = Math.max(0, 16 - (currTime - lastTime));
+        var id = window.setTimeout(function () {
+            callback(currTime + timeToCall);
+        },
+        timeToCall);
+        lastTime = currTime + timeToCall;
+        return id;
+    };
+
+    if (!window.cancelAnimationFrame) window.cancelAnimationFrame = function (id) {
+        clearTimeout(id);
+    };
+}());
+
+function drawSystemHub(systemName)
+{
+  var base_image = new Image();
+  base_image.src = "<%= asset_path('hub.png') %>";
+  base_image.onload = function(){
+    ctx.drawImage(base_image, 150, 100);
+  }
+  // var image = $("#wiki_logo")
+  // ctx.drawImage(image, 100, 100)
+}
+
+// setup stuff.
+var canvas = document.createElement("canvas"),
+    ctx = canvas.getContext("2d"),
+    width = 1200,
+    height = 600,
+    settings = {
+        background: "#ffffff",
+        // traceColor: "rgba(31, 155, 233, 0.91)",
+        // traceFill: "#000000",
+        startTraces : 20,
+        totalTraces : 50,
+        redraw: function () {
+            reinit();
+        },
+        sources: {
+          a: [100, 100],
+          b: [500, 500]
+        }
+    };
+
+canvas.width = width;
+canvas.height = height;
+document.body.appendChild(canvas);
+
+function Subscriber(publisher) {
+
+}
+
+// quadratic bezier: percent is 0-1
+function getQuadraticBezierXYatPercent(startPt,controlPt,endPt,percent) {
+    var x = Math.pow(1-percent,2) * startPt.x + 2 * (1-percent) * percent * controlPt.x + Math.pow(percent,2) * endPt.x; 
+    var y = Math.pow(1-percent,2) * startPt.y + 2 * (1-percent) * percent * controlPt.y + Math.pow(percent,2) * endPt.y; 
+    return( {x:x,y:y} );
+}
+
+// cubic bezier percent is 0-1
+function getCubicBezierXYatPercent(startPt,controlPt1,controlPt2,endPt,percent){
+  var x=CubicN(percent,startPt.x,controlPt1.x,controlPt2.x,endPt.x);
+  var y=CubicN(percent,startPt.y,controlPt1.y,controlPt2.y,endPt.y);
+  return({x:x,y:y});
+}
+
+// cubic helper formula at percent distance
+function CubicN(pct, a,b,c,d) {
+  var t2 = pct * pct;
+  var t3 = t2 * pct;
+  return a + (-a * 3 + pct * (3 * a - a * pct)) * pct
+  + (3 * b + pct * (-6 * b + b * 3 * pct)) * pct
+  + (c * 3 - c * 3 * pct) * t2
+  + d * t3;
+}
+
+function SourceSystem(sourceX, sourceY, radius, orientation, system_name, system_color) {
+  this.sourceX = sourceX;
+  this.sourceY = sourceY;
+  this.radius = radius;
+  this.publishers = [];
+  this.orientation = orientation;
+  this.subscriptions = [];
+  this.system_name = system_name;
+  this.system_color = system_color;
+
+  var curveDirection = 0;
+  if(this.orientation == 1) {
+    curveDirection = height;
+  }
+
+  this.ctrlPoint1 = {x:width/2, y:height/2};;
+  this.ctrlPoint2 = {x:this.sourceX/2, y:height/2};
+}
+
+SourceSystem.prototype.subscribe = function(destinationSystem) {
+  this.subscriptions.push(destinationSystem);
+}
+
+SourceSystem.prototype.render = function() {
+  ctx.beginPath();
+  ctx.arc(this.sourceX, this.sourceY, this.radius, 0, Math.PI * 2);
+  ctx.fillStyle = this.system_color;
+  ctx.strokeStyle = this.system_color;
+  ctx.fill();
+  ctx.stroke();
+}
+
+function Trace(settings) {
+  settings = settings || {};
+  this.x = settings.x;
+  this.y = settings.y;
+  this.travelPercent = 0.0;
+  this.sourceSystem = settings.sourceSystem;
+  this.targetSystem = settings.targetSystem;
+  settings.sourceSystem.publishers.push(this);
+
+  this.points = [];
+  this.points.push({
+      x: this.x,
+      y: this.y,
+      arc: 0
+  });
+
+  this.trapCount = 0;
+  this.live = true;
+
+  this.lastPoint = this.points[0];
+
+  this.angle = settings.angle;
+  this.speed = 4;
+  // this.speed = Math.ceil(Math.random() * 10);
+}
+
+Trace.prototype.update = function () {
+    var x = this.lastPoint.x,
+        y = this.lastPoint.y,
+        dx = this.x - x,
+        dy = this.y - y;
+
+    // if its greater than .01 keep moving
+    // if (Math.random() > 0.01) {
+    if (true) {
+      var velX = Math.cos(this.angle) * this.speed,
+        velY = Math.sin(this.angle) * this.speed,
+        checkPointX = this.x + (Math.cos(this.angle) * 8),
+        checkPointY = this.y + (Math.sin(this.angle) * 8),
+        imageData = ctx.getImageData(checkPointX, checkPointY, 3, 3),
+        pxlData = imageData.data,
+        collision = false;
+
+      // check if its in bounds.
+      if (checkPointX > 0 && checkPointX < width && checkPointY > 0 && checkPointY < height) {
+        // check if the point in front is clear or not.
+        // for (var i = 0, n = pxlData.length; i < n; i += 4) {
+        //   var alpha = imageData.data[i + 3]; //fetch alpha value for pixels ahead
+        //   // Only break if this is a bright pixel, i.e. source or message
+        //   if (alpha/255 > 0.9) {
+        //     collision = true;
+        //     break;
+        //   }
+        // }
+        if(this.travelPercent > 0.99) {
+          // console.log("END OF THE LINE");
+          collision = true;
+        }
+      } else {
+          collision = true;
+      }
+
+      // no collision keep moving
+      if (!collision) {
+        this.trapCount = 0;
+        // this.x += velX;
+        // this.y += velY;
+        // this.x = Math.random() * width;
+        // this.y = Math.random() * height;
+        if(this.travelPercent <= 0.99) {
+          this.travelPercent += 0.006
+        }
+
+        var startpoint = {x:this.sourceSystem.sourceX, y:this.sourceSystem.sourceY};
+        var endpoint = {x:this.targetSystem.sourceX, y:this.targetSystem.sourceY};
+        // var ctrlPoint1 = {x:this.sourceSystem.sourceX, y:height};
+        var coords = getQuadraticBezierXYatPercent(startpoint, this.sourceSystem.ctrlPoint1, endpoint, this.travelPercent);
+        // console.log("x: " + coords.x + " y: " + coords.y);
+
+        // if(Math.random() < 0.1){
+        //   console.log("travelpercent: " + this.travelPercent);
+        //   console.log("startpoint x: " + startpoint.x + " startpoint y: " + startpoint.y);
+        //   console.log("endpoint x: " + endpoint.x + " endpoint y: " + endpoint.y);
+        //   console.log("ctrlPoint1 x: " + ctrlPoint1.x + " ctrlPoint1 y: " + ctrlPoint1.y);
+        //   console.log("ctrlPoint2 x: " + ctrlPoint2.x + " ctrlPoint2 y: " + ctrlPoint2.y);
+        // }
+        this.x = coords.x;
+        this.y = coords.y;
+      } else {
+        // collision, assume its not the end
+        this.trapCount++;
+        this.angle -= 45 * (Math.PI / 180);
+
+        // line is fully trapped make sure to draw an arc and start a new trace.            
+        if (this.trapCount >= 7) {
+            this.live = false;
+
+            // if (traces.length < settings.totalTraces) {
+            //     traces.push(new Trace({
+            //         cX: 0,
+            //         cY: 0
+            //     }));
+            // }
+        }
+
+        if (Math.sqrt(dx * dx + dy * dy) > 4) {
+          this.points.push({
+              x: this.x,
+              y: this.y
+          });
+          this.lastPoint = this.points[this.points.length - 1];
+        } else {
+          this.trapCount++;
+          this.x = this.lastPoint.x;
+          this.y = this.lastPoint.y;
+        }
+      }
+    } 
+};
+
+Trace.prototype.render = function () {
+
+  this.fillStyle = this.targetSystem.system_color;
+  this.strokeStyle = this.targetSystem.system_color;
+  // Handles movement
+  ctx.beginPath();
+  ctx.moveTo(this.points[0].x, this.points[0].y);
+
+  for (var p = 1, plen = this.points.length; p < plen; p++) {
+    // ctx.lineTo(this.points[p].x, this.points[p].y);
+  }
+  // ctx.lineTo(this.x, this.y);
+  // ctx.stroke();    
+
+  // Trace nodes at the end
+  ctx.beginPath();
+  ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  this.fillStyle = this.sourceSystem.system_color;
+  this.strokeStyle = this.sourceSystem.system_color;
+
+  // Creates the node at the beginning
+  ctx.beginPath();
+  ctx.arc(this.points[0].x, this.points[0].y, 4, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
+
+  // Draw subscriber line
+  ctx.beginPath();
+  ctx.moveTo(this.sourceSystem.sourceX, this.sourceSystem.sourceY);
+  for(var s = 0; s < this.sourceSystem.subscriptions.length; s++) {
+    // ctx.bezierCurveTo(this.ctrlPoint1.x, this.ctrlPoint1.y, this.ctrlPoint2.x, this.ctrlPoint2.y, width/2, height/3);
+    // ctx.bezierCurveTo(this.ctrlPoint1.x, this.ctrlPoint1.y, this.ctrlPoint2.x, this.ctrlPoint2.y, this.subscriptions[s].publishers[0].points[0].x, this.subscriptions[s].publishers[0].points[0].y);
+    ctx.quadraticCurveTo(this.sourceSystem.subscriptions[s].ctrlPoint1.x, this.sourceSystem.subscriptions[s].ctrlPoint1.y, this.targetSystem.sourceX, this.targetSystem.sourceY);
+    ctx.stroke();
+    // ctx.quadraticCurveTo(this.ctrlPoint1.x, 100, this.subscriptions[s].publishers[0].points[0].x, this.subscriptions[s].publishers[0].points[0].y);
+    // ctx.stroke();
+  }
+  ctx.strokeStyle = this.sourceSystem.system_color;
+
+  // // Creates the node at the end
+  // if (!this.live) {
+  //   ctx.beginPath();
+  //   ctx.arc(this.points[plen - 1].x, this.points[plen - 1].y, 4, 0, Math.PI * 2);
+  //   ctx.closePath();
+  //   ctx.fill();
+  //   ctx.stroke();
+  // }
+
+};
+
+// init
+var traces = [],
+  traceNum = settings.startTraces,
+  reqAnimFrameInstance = null,
+  systems = {};
+
+spawnSources();
+subscribeSystems();
+spawnPublishers();
+
+function spawnSources() {
+  systems["customer-service"] = new SourceSystem(width * 0.3, height * 0.3, 60, 0, "customer-service", "rgba(31, 255, 33, 0.91)")
+  systems["warehouse"] = new SourceSystem(width * 0.7, height * 0.3, 60, 0, "warehouse", "rgba(131, 155, 233, 0.91)")
+  systems["order-management"] = new SourceSystem(width * 0.3, height * 0.7, 60, 1, "order-management", "rgba(153, 50, 204, 0.91)")
+  systems["shipping"] = new SourceSystem(width * 0.7, height * 0.7, 60, 1, "shipping", "rgba(255, 215, 0, 0.91)")
+  systems["security"] = new SourceSystem(width * 0.5, height * 0.1, 60, 1, "security", "rgba(255, 155, 233, 0.91)")
+  systems["finance"] = new SourceSystem(width * 0.5, height * 0.9, 60, 1, "finance", "rgba(0, 255, 200, 0.91)") 
+}
+
+function subscribeSystems() {
+  systems["customer-service"].subscribe(systems["shipping"]);
+
+  systems["shipping"].subscribe(systems["finance"]);
+
+  // Everyone talks to order management
+  systems["finance"].subscribe(systems["order-management"]);
+  systems["warehouse"].subscribe(systems["order-management"]);
+  systems["shipping"].subscribe(systems["order-management"]);
+  systems["security"].subscribe(systems["order-management"]);
+  systems["customer-service"].subscribe(systems["order-management"]);
+
+  // Everyone talks to security
+  systems["finance"].subscribe(systems["security"]);
+  systems["warehouse"].subscribe(systems["security"]);
+  systems["shipping"].subscribe(systems["security"]);
+  systems["order-management"].subscribe(systems["security"]);
+  systems["customer-service"].subscribe(systems["security"]);
+}
+
+function spawnPublishers() {
+  spawnPublishersForSystem(5, systems["customer-service"], 0) //upper left
+  spawnPublishersForSystem(6, systems["warehouse"], 0.5); //upper right
+  spawnPublishersForSystem(7, systems["order-management"], 1.5); //lower left
+  spawnPublishersForSystem(8, systems["shipping"], 1); //lower right
+  spawnPublishersForSystem(8, systems["security"], 1); //lower right
+  spawnPublishersForSystem(8, systems["finance"], 1); //lower right
+}
+
+function respawnPublishers() {
+  traces = [];
+  spawnPublishersForSystem(5, systems["customer-service"], 0) //upper left
+  spawnPublishersForSystem(6, systems["warehouse"], 0.5); //upper right
+  spawnPublishersForSystem(7, systems["order-management"], 1.5); //lower left
+  spawnPublishersForSystem(8, systems["shipping"], 1); //lower right
+  spawnPublishersForSystem(8, systems["security"], 1); //lower right
+  spawnPublishersForSystem(8, systems["finance"], 1); //lower right
+}
+
+function spawnPublishersForSystem(tracesPerNode, system, startAngle, targetSystem) {
+  var startX = system.sourceX;
+  var startY = system.sourceY;
+  var numNodes = tracesPerNode;
+  // for(var b = 1; b <= tracesPerNode; b++) {
+  for(var sub = 0; sub < system.subscriptions.length; sub++) {
+    var angle = Math.PI * (1 + (1/numNodes) * 1);
+    var x = startX + system.radius * Math.cos(angle)
+    var y = startY + system.radius * Math.sin(angle)
+    traces.push(new Trace(
+      {
+        x: x,
+        y: y,
+        angle: angle,
+        goalX: width/2,
+        goalY: height/2,
+        sourceSystem: system,
+        targetSystem: system.subscriptions[sub]
+      }
+    ));
+  }
+  // }
+}
+
+function reinit() {
+  cancelAnimationFrame(reqAnimFrameInstance);
+  traces = [];
+  traceNum = settings.startTraces;
+  ctx.clearRect(0, 0, width, height);
+
+  doTrace();
+}
+
+function defineBuses() {
+
+}
+
+// ctx.strokeStyle = "rgba(31, 155, 233, 0.8)";
+ctx.fillStyle = "#000";
+ctx.lineWidth = 2;
+
+
+function doTrace() {
+  ctx.clearRect(0, 0, width, height);
+
+  Object.keys(systems).forEach(function (key) {
+    systems[key].render();
+  });
+
+  for (var b = 0; b < traces.length; b++) {
+      traces[b].render();
+  }
+
+  for (b = 0; b < traces.length; b++) {
+      if (traces[b].live) {
+          traces[b].update();
+      }
+  }
+  reqAnimFrameInstance = requestAnimationFrame(doTrace);    
+}
+
+
+// make_base();
+doTrace();
+</script>
+
